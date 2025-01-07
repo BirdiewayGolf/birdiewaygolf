@@ -1,6 +1,8 @@
+// src/lib/stores/tournament-store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Tournament, TournamentType, TournamentPairing } from '@/lib/types/tournament';
+import { tournaments as defaultTournaments } from '../data/tournaments';
 
 interface TournamentState {
   version: number;
@@ -18,18 +20,18 @@ interface TournamentState {
 export const useTournamentStore = create<TournamentState>()(
   persist(
     (set, get) => ({
-      version: 2, // Incremented version to trigger migration
-      tournaments: [],
+      version: 2,
+      tournaments: defaultTournaments, // Initialize with default tournaments
       
       addTournament: (tournament) => {
         const newTournament: Tournament = {
           ...tournament,
           id: crypto.randomUUID(),
           pairings: [],
-          leaderboard: [], // Ensure leaderboard is initialized
-          participants: [], // Ensure participants is initialized
-          isVisible: true, // Default to visible
-          createdAt: new Date().toISOString(), // Add creation timestamp
+          leaderboard: [],
+          participants: [],
+          isVisible: true,
+          createdAt: new Date().toISOString(),
         };
         
         set((state) => ({
@@ -38,15 +40,19 @@ export const useTournamentStore = create<TournamentState>()(
       },
       
       updateTournament: (id, updates) => {
+        // Don't allow updating default tournaments
+        if (defaultTournaments.some(t => t.id === id)) {
+          console.warn('Cannot modify default tournament');
+          return;
+        }
+
         set((state) => ({
           tournaments: state.tournaments.map((t) =>
             t.id === id 
               ? { 
                   ...t, 
                   ...updates,
-                  // Ensure isVisible is not accidentally removed
                   isVisible: updates.isVisible ?? t.isVisible ?? true,
-                  // Preserve creation timestamp
                   createdAt: t.createdAt || new Date().toISOString()
                 } 
               : t
@@ -55,30 +61,48 @@ export const useTournamentStore = create<TournamentState>()(
       },
       
       deleteTournament: (id) => {
+        // Don't allow deleting default tournaments
+        if (defaultTournaments.some(t => t.id === id)) {
+          console.warn('Cannot delete default tournament');
+          return;
+        }
+
         set((state) => ({
           tournaments: state.tournaments.filter((t) => t.id !== id),
         }));
       },
       
       getTournamentsByType: (type) => {
-        return get().tournaments
-          .filter((t) => 
-            t.type === type && 
-            (t.isVisible ?? true) // Only return visible tournaments
-          )
-          .sort((a, b) => 
-            // Sort by date, with upcoming tournaments first
-            new Date(a.date).getTime() - new Date(b.date).getTime()
-          );
+        const tournaments = get().tournaments;
+        // Always include default tournaments of the requested type
+        const defaultOfType = defaultTournaments.filter(t => t.type === type);
+        const stateOfType = tournaments.filter(t => 
+          t.type === type && 
+          (t.isVisible ?? true) &&
+          !defaultTournaments.some(dt => dt.id === t.id)
+        );
+        
+        return [...defaultOfType, ...stateOfType]
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       },
       
       getTournamentById: (id) => {
+        // Check default tournaments first
+        const defaultTournament = defaultTournaments.find(t => t.id === id);
+        if (defaultTournament) return defaultTournament;
+
+        // Then check store tournaments
         return get().tournaments.find((t) => 
           t.id === id && (t.isVisible ?? true)
         );
       },
       
       addPairing: (tournamentId, pairing) => {
+        if (defaultTournaments.some(t => t.id === tournamentId)) {
+          console.warn('Cannot modify default tournament');
+          return;
+        }
+
         set((state) => ({
           tournaments: state.tournaments.map((t) =>
             t.id === tournamentId
@@ -95,6 +119,11 @@ export const useTournamentStore = create<TournamentState>()(
       },
       
       updatePairing: (tournamentId, pairingId, updates) => {
+        if (defaultTournaments.some(t => t.id === tournamentId)) {
+          console.warn('Cannot modify default tournament');
+          return;
+        }
+
         set((state) => ({
           tournaments: state.tournaments.map((t) =>
             t.id === tournamentId
@@ -110,6 +139,11 @@ export const useTournamentStore = create<TournamentState>()(
       },
       
       deletePairing: (tournamentId, pairingId) => {
+        if (defaultTournaments.some(t => t.id === tournamentId)) {
+          console.warn('Cannot modify default tournament');
+          return;
+        }
+
         set((state) => ({
           tournaments: state.tournaments.map((t) =>
             t.id === tournamentId
@@ -124,23 +158,13 @@ export const useTournamentStore = create<TournamentState>()(
     }),
     {
       name: 'tournament-storage',
-      version: 2, // Incremented to trigger migration
-      migrate: (persistedState: any, version: number) => {
-        // Migration logic to ensure compatibility
-        if (version < 2) {
-          return {
-            version: 2,
-            tournaments: (persistedState.tournaments || []).map((tournament: any) => ({
-              ...tournament,
-              isVisible: tournament.isVisible ?? true,
-              createdAt: tournament.createdAt || new Date().toISOString(),
-              pairings: tournament.pairings || [],
-              leaderboard: tournament.leaderboard || [],
-              participants: tournament.participants || [],
-            })),
-          };
-        }
-        return persistedState;
+      version: 2,
+      merge: (persistedState: any, currentState) => {
+        return {
+          ...currentState,
+          ...persistedState,
+          tournaments: [...defaultTournaments, ...(persistedState.tournaments || [])],
+        };
       },
     }
   )

@@ -4,7 +4,7 @@ import type { League } from '../types/league';
 export const leagues: League[] = [
   {
     title: 'Business League',
-    description: 'Experience competitive golf with a networking twist in our premier 8-tournament series. Each event combines strategic play with valuable business connections, featuring exciting prizes and premium swag.',
+    description: 'Join our 4-tournament series where great golf meets great connections. Compete, network, and enjoy quality player merch at every event.',
     features: [
       '4 golf tournaments in the series',
       'Flexible team composition for business networking',
@@ -39,3 +39,4 @@ export const leagues: League[] = [
     icon: Clock
   }
 ];
+
